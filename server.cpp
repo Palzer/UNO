@@ -384,25 +384,36 @@ void arg_parse(char* line, char* command, char* args, int len)
 
 void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players)
 {
-	int rc;
-	char buf[200];
-	char sender[300];
-	char concat[10] = ": ";
+	int 	rc;
+	char 	buf[200];
+	char 	sender[300];
+	char 	concat[10] = ": ";
+	bool	already_in = false;
 
 	if (strcmp(command,"JOIN") == 0)
 	{
 		fprintf(stdout,"Player wants to join with name \"%s\"\n",args);
-		if (client_vec->size() < max_players)
+		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
 		{
-			client_data client = client_data(socket,args);
-			client_vec->push_back(client);
-			client.display();
+			if (itr->sd == socket)
+			{
+				fprintf(stdout,"You are already in a game\n");
+				already_in = true;
+			}
 		}
-		else
+		if (not already_in)
 		{
-			fprintf(stdout,"The lobby is full and player %s cannot join the game\n",args);
+			if (client_vec->size() < max_players)
+			{
+				client_data client = client_data(socket,args);
+				client_vec->push_back(client);
+				client.display();
+			}
+			else
+			{
+				fprintf(stdout,"The lobby is full and player %s cannot join the game\n",args);
+			}
 		}
-		
 	}
 	else if (strcmp(command,"CHAT") == 0)
 	{	
