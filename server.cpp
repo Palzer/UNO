@@ -87,12 +87,35 @@ int main(int argc, char *argv[])
         memset((char *)&sad,0,sizeof(sad)); /* clear sockaddr structure */
         sad.sin_family = AF_INET;         /* set family to Internet     */
         sad.sin_addr.s_addr = INADDR_ANY; /* set the local IP address   */
-
+		
 
         /* Check command-line argument for protocol port and extract    */
         /* port number if one is specified.  Otherwise, use the default */
         /* port value given by constant PROTOPORT                       */
-        if (argc > 1) {                 /* if argument specified        */
+        if (argc > 3) {
+        		if ((max_players = atoi(argv[3])) > 10)
+        		{
+        			fprintf(stdout,"That is more than the allowed number of players for uno. setting max to 10\n");
+        			max_players = 10;
+        		}
+        		if ((min_players = atoi(argv[2])) < 2)
+        		{
+        			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
+        			min_players = 2;
+        		}
+        		
+       			port = atoi(argv[1]);
+       	} else if (argc > 2) {
+       			fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
+       			if ((min_players = atoi(argv[2])) < 2)
+        		{
+        			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
+        			min_players = 2;
+        		}
+       			port = atoi(argv[1]);       	
+       	} else if (argc > 1) {                 /* if argument specified        */
+       			fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
+       			fprintf(stdout,"No minimum number of players specified. Defaulting to %d player min\n",min_players);
                 port = atoi(argv[1]);   /* convert argument to binary   */
         } else {
                 port = PROTOPORT;       /* use default port number      */
