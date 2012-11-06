@@ -98,10 +98,20 @@ int main(int argc, char *argv[])
         			fprintf(stdout,"That is more than the allowed number of players for uno. setting max to 10\n");
         			max_players = 10;
         		}
+        		else if ((max_players = atoi(argv[3])) < 2)
+        		{
+        			fprintf(stdout,"That is less than the allowed number of players for uno. setting max to 2\n");
+        			max_players = 2;
+        		}
         		if ((min_players = atoi(argv[2])) < 2)
         		{
         			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
         			min_players = 2;
+        		}
+        		else if ((min_players = atoi(argv[2])) > max_players)
+        		{
+        			fprintf(stdout,"That is more than the specified max number of players. setting min to max\n");
+        			min_players = max_players;
         		}
         		
        			port = atoi(argv[1]);
@@ -118,8 +128,11 @@ int main(int argc, char *argv[])
        			fprintf(stdout,"No minimum number of players specified. Defaulting to %d player min\n",min_players);
                 port = atoi(argv[1]);   /* convert argument to binary   */
         } else {
+        		fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
+       			fprintf(stdout,"No minimum number of players specified. Defaulting to %d player min\n",min_players);
                 port = PROTOPORT;       /* use default port number      */
         }
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         if (port > 0)                   /* test for illegal value       */
                 sad.sin_port = htons((u_short)port);
         else {                          /* print error message and exit */
