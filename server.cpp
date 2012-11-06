@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <netinet/in.h>
+#include <cstring>
 #include "clientdata.h"
 #define PROTOPORT       36729            /* default protocol port number */
 #define QLEN            6               /* size of request queue        */
@@ -383,6 +384,11 @@ void arg_parse(char* line, char* command, char* args, int len)
 
 void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players)
 {
+	int rc;
+	char buf[200];
+	char sender[300];
+	char concat[10] = ": ";
+
 	if (strcmp(command,"JOIN") == 0)
 	{
 		fprintf(stdout,"Player wants to join with name \"%s\"\n",args);
@@ -399,8 +405,31 @@ void player_commands(vector <client_data>* client_vec, int socket, char* command
 		
 	}
 	else if (strcmp(command,"CHAT") == 0)
-	{
-		fprintf(stdout,"Player wants to chat with message \"%s\"\n",args);
+	{	
+		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+		{
+			if (itr->sd == socket)
+			{
+				strcpy(sender,itr->name);
+			}
+		}
+		strncpy(buf,args,200);
+		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
+		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
+		buf[strlen(buf)] = '\n';
+		buf[strlen(buf)+1] = 0;
+		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
+		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
+		strcat(sender,concat);
+		strncat(sender,buf,strlen(buf)+1);
+		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+		{
+			if (itr->sd != socket)
+			{
+				rc = send(itr->sd, sender, strlen(sender), 0);
+			}
+			
+		}
 	}
 	else if (strcmp(command,"PLAY") == 0)
 	{
