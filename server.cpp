@@ -53,7 +53,7 @@ using namespace std;
  */
  
 void arg_parse(char* line, char* command, char* args, int len);
-void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args);
+void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players);
 int main(int argc, char *argv[])
 {
         struct  	hostent  *ptrh;  /* pointer to a host table entry       */
@@ -66,14 +66,13 @@ int main(int argc, char *argv[])
         int     	port;            /* protocol port number                */
         char 		string[8];
         vector		<client_data> client_vec;
-        int 		n,x,k, rc, max_sd, desc_ready, close_conn,len;
+        int 		n,x,k, rc, max_sd, desc_ready, close_conn,len, lobbytimer;
         int 		end_server = false;
         socklen_t   alen;            /* length of address                   */
-        char		msg[100] = "Only accepts messages of length ten for now\n";
+        char		msg[100] = "Accepts message length of <= 1000\n";
         char  		args[1000];
-        int			min_players
-        int 		max_players
-        int			num_players = 0;
+        int			min_players = 2;
+        int 		max_players = 10;
         char 		command[100];
         char    	buf[1000];       /* buffer for string the server sends  */
         timeval 	timeout;
@@ -144,8 +143,9 @@ int main(int argc, char *argv[])
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 		/*initialize timeval struct to five seconds*/
-		timeout.tv_sec = 30;
+		timeout.tv_sec = 5;
 		timeout.tv_usec = 0;
+		lobbytimer = 30;
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 
@@ -167,9 +167,28 @@ int main(int argc, char *argv[])
 					client_vec[g].display();
 				}
 				fprintf(stdout,"\n");
+				fprintf(stdout,"Time left until game starts is %d seconds\n",lobbytimer);
         		fprintf(stdout,"Waiting on select\n");
         		rc = select(max_sd + 1, &working_fd_read, NULL, NULL, &timeout);
-        		timeout.tv_sec = 30;
+        		if (client_vec.size() >= min_players)
+        		{
+        			fprintf(stdout,"decrementing lobby timer\n");
+        			lobbytimer = lobbytimer - 5;
+        			if (lobbytimer == 0)
+        			{
+        				fprintf(stdout,"************************************************************************************\n");
+        				fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
+        				fprintf(stdout,"************************************************************************************\n");
+        				break;
+        			}
+        		}
+        		else
+        		{
+        			fprintf(stdout,"under minimum number of players. lobby timer not ticking\n");
+        			lobbytimer = 30;
+        		}
+        		
+        		timeout.tv_sec = 5;
 				timeout.tv_usec = 0;
         		//////////////////////////////////////////////////////////////////////////
         		
@@ -185,8 +204,7 @@ int main(int argc, char *argv[])
         		/*check to see if timeout expired*/
         		if (rc == 0)
         		{
-        			fprintf(stdout,"select() timed out. breaking\n");
-        			break;
+        			fprintf(stdout,"select() timed out.\n");
         		}
         		//////////////////////////////////////////////////////////////////////////
         		
@@ -260,7 +278,7 @@ int main(int argc, char *argv[])
                   				fprintf(stdout,"command is \"%s\" and args are \"%s\"\n",command,args);
 								if (not close_conn)
 								{
-									player_commands(&client_vec,i,command,args);
+									player_commands(&client_vec,i,command,args,max_players);
 								}
                   				//rc = send(i, buf, len, 0);
                   				//if (rc < 0)
@@ -282,7 +300,7 @@ int main(int argc, char *argv[])
         						{
         							if (client_vec[g].sd == i)
         							{	
-        								fprintf(stdout"Client name: %s Socket: %d (disconnected)\n",client_vec[g].name,client_vec[g].sd);
+        								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",client_vec[g].name,client_vec[g].sd);
         								client_vec.erase(client_vec.begin() + g);
         							}
         						}
@@ -327,14 +345,22 @@ void arg_parse(char* line, char* command, char* args, int len)
     //fprintf(stdout,"command is %s and args are %s\n",command,args);
 }
 
-void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args)
+void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players)
 {
 	if (strcmp(command,"JOIN") == 0)
 	{
 		fprintf(stdout,"Player wants to join with name \"%s\"\n",args);
-		client_data client = client_data(socket,args);
-		client_vec->push_back(client);
-		client.display();
+		if (client_vec->size() < max_players)
+		{
+			client_data client = client_data(socket,args);
+			client_vec->push_back(client);
+			client.display();
+		}
+		else
+		{
+			fprintf(stdout,"The lobby is full and player %s cannot join the game\n",args);
+		}
+		
 	}
 	else if (strcmp(command,"CHAT") == 0)
 	{
