@@ -12,6 +12,7 @@ class client_data{
 		
 		int 	sd;
 		char 	name[9];
+		//vector <card> hand;
 		
 		
 	private: //can change public to private if i add appropriate functions

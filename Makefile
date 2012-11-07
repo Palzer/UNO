@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS= -g -Wall
 
-SERVER_SRCS= server.cpp clientdata.cpp
+SERVER_SRCS= server.cpp clientdata.cpp deck.cpp
 SERVER_OBJS= ${SERVER_SRCS:.cpp=.o}
 
 CLIENT_SRCS= client.cpp
@@ -15,4 +15,4 @@ clean:
 	rm -r server $(SERVER_OBJS)
 	rm -r client $(CLIENT_OBJS)
 	
-$(OBJS): clientdata.h
+$(OBJS): clientdata.h deck.h

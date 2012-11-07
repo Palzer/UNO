@@ -25,6 +25,7 @@
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <cstring>
+#include "deck.h"
 #include "clientdata.h"
 #define PROTOPORT       36729            /* default protocol port number */
 #define QLEN            6               /* size of request queue        */
@@ -53,8 +54,11 @@ using namespace std;
  *------------------------------------------------------------------------
  */
  
-void arg_parse(char* line, char* command, char* args, int len);
+bool arg_parse(char* line, char* command, char* args, int len);
 void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players);
+void display_players(vector <client_data>* client_vec);
+void send_to_players(vector <client_data>* client_vec, char* buf);
+bool player_is_in_lobby(vector <client_data>* client_vec, int socket);
 int main(int argc, char *argv[])
 {
         struct  	hostent  *ptrh;  /* pointer to a host table entry       */
@@ -198,7 +202,11 @@ int main(int argc, char *argv[])
         		//////////////////////////////////////////////////////////////////////////
         		/*call select and wait for it to finish*/
         		fprintf(stdout,"\n");
-        		fprintf(stdout,"Currently connected players are \n");
+        		fprintf(stdout,"Currently connected players are: \n");
+        		if (client_vec.size() == 0)
+        		{
+        			fprintf(stdout,"None\n");
+        		}
 				for (int g=0; g<client_vec.size(); g++)
 				{	
 					client_vec[g].display();
@@ -310,8 +318,16 @@ int main(int argc, char *argv[])
                   				fprintf(stdout,"%d bytes received\n",len);
                   				/*here is where i should be doing things with what a client sends me*/
                   				//echo data back to the client
-                  				
-                  				arg_parse(buf,command,args,len); //parse the line sent by the client
+                  				if (not close_conn && not arg_parse(buf,command,args,len)) //parse the line sent by the client
+                  				{
+                  					rc = send(i,"[INVALID|Not a valid command format]\n",strlen("[INVALID|Not a valid command format]\n"),0);
+                  					break;
+                  				}
+                  				if (strcmp(command,"JOIN") != 0 && not player_is_in_lobby(&client_vec,i))
+                  				{
+                  					rc = send(i,"[INVALID|You cannot send commands unless you \"JOIN\" first]\n",strlen("[INVALID|You cannot send commands unless you \"JOIN\" first]\n"),0);
+                  					break;
+                  				}
                   				fprintf(stdout,"command is \"%s\" and args are \"%s\"\n",command,args);
 								if (not close_conn)
 								{
@@ -354,14 +370,20 @@ int main(int argc, char *argv[])
         		}
         }
 }
-
-void arg_parse(char* line, char* command, char* args, int len)
+///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
+bool arg_parse(char* line, char* command, char* args, int len)
 {
 	int 	x = 0;
 	int 	k = -1;
 	bool	bar = false;
+	bool	valid = true;
 	strcpy(command,"");
 	strcpy(args,"");
+	if (line[0] != '[' or line[len-3] !=']')
+	{
+		valid = false;
+	}
 	for (int j = 1; j < len-2; j++){
 
 		if (line[j] == '|'){
@@ -379,15 +401,23 @@ void arg_parse(char* line, char* command, char* args, int len)
 	}
 	args[k] = 0;
 	command[x] = 0;
+	if (not bar)
+	{
+		return false;
+	}
+	else
+	{
+		return valid;
+	}
     //fprintf(stdout,"command is %s and args are %s\n",command,args);
 }
-
+///////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////
 void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players)
 {
 	int 	rc;
 	char 	buf[200];
-	char 	sender[300];
-	char 	concat[10] = ": ";
+	char 	sender[300] = "[";
 	bool	already_in = false;
 
 	if (strcmp(command,"JOIN") == 0)
@@ -397,7 +427,7 @@ void player_commands(vector <client_data>* client_vec, int socket, char* command
 		{
 			if (itr->sd == socket)
 			{
-				fprintf(stdout,"You are already in a game\n");
+				rc = send(socket, "[INVALID|You are already in a game]\n", strlen("[INVALID|You are already in a game]\n"), 0);
 				already_in = true;
 			}
 		}
@@ -408,10 +438,11 @@ void player_commands(vector <client_data>* client_vec, int socket, char* command
 				client_data client = client_data(socket,args);
 				client_vec->push_back(client);
 				client.display();
+				display_players(client_vec);
 			}
 			else
 			{
-				fprintf(stdout,"The lobby is full and player %s cannot join the game\n",args);
+				rc = send(socket, "[INVALID|The lobby is full, you cannot join the game]\n", strlen("[INVALID|The lobby is full, you cannot join the game]\n"), 0);
 			}
 		}
 	}
@@ -421,18 +452,19 @@ void player_commands(vector <client_data>* client_vec, int socket, char* command
 		{
 			if (itr->sd == socket)
 			{
-				strcpy(sender,itr->name);
+				strcat(sender,itr->name);
 			}
 		}
 		strncpy(buf,args,200);
 		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
 		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
-		buf[strlen(buf)] = '\n';
-		buf[strlen(buf)+1] = 0;
+		buf[strlen(buf)] = 0;
 		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
 		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
-		strcat(sender,concat);
+		strcat(sender,"|");
 		strncat(sender,buf,strlen(buf)+1);
+		strcat(sender,"]");
+		strcat(sender,"\n");
 		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
 		{
 			if (itr->sd != socket)
@@ -448,6 +480,59 @@ void player_commands(vector <client_data>* client_vec, int socket, char* command
 	}	
 	else
 	{
-		fprintf(stdout,"STFU PLAYER!!!\n");
+		rc = send(socket,"[INVALID|That is not a valid command]\n", strlen("[INVALID|That is not a valid command]\n"),0);
+		//fprintf(stdout,"That is not a valid command\n",);
 	}
 }
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+void display_players(vector <client_data>* client_vec)
+{
+	char buf[200];
+	int rc;
+	
+	sprintf(buf,"[PLAYERS|");
+	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+	{
+		if (itr != client_vec->begin())
+		{
+			strcat(buf, ",");
+		}
+		strcat(buf,itr->name);
+	}
+	strcat(buf,"]\n");
+	send_to_players(client_vec,buf);
+}
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+void send_to_players(vector <client_data>* client_vec, char* buf)
+{
+	int rc;
+	
+	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+	{
+		rc = send(itr->sd, buf, strlen(buf), 0);
+	}
+}
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+bool player_is_in_lobby(vector <client_data>* client_vec, int socket)
+{
+	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+	{
+		if (itr->sd == socket)
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+
+
+
+
+
+
+
