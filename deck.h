@@ -1,18 +1,16 @@
 //deck.h
 
-enum card_type 	{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', D, S, R, W, F};
-enum card_color	{ N, R, G, B, Y};
-
 class card{
-
+	
 	public:
 		
-		//ADD CONSTRUCTOR AND OTHER METHODS HERE
+		card();
+		card(char t, char c);
 		
 	private:
 	
-	//card_type 	type;
-	card_color 	color;
+	char 	type;
+	char 	color;
 };
 
 class deck{
@@ -20,9 +18,12 @@ class deck{
 	public:
 	
 	//may want functions for draw, discard, whats on top of each, shuffle...
+	deck();
 	
 	private:
 	
 	//may want a vector of cards here for the draw and discard piles
+	vector<card> draw_pile;
+	vector<card> discard_pile;
 
 };

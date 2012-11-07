@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #endif
+using namespace std;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,7 +34,7 @@
 #define FALSE            0
 int     visits      =   0;              /* counts client connections    */
 
-using namespace std;
+
 
 /*------------------------------------------------------------------------
  * Program:   server

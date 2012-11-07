@@ -5,21 +5,24 @@
 
 using namespace std;
 
-client_data::client_data(){
+client_data::client_data()
+{
 		
 			sd = 0;
 			strcpy(name,"");
 
 }
 		
-client_data::client_data(int sock, char* string){
+client_data::client_data(int sock, char* string)
+{
 		
 			sd = sock;
 			strcpy (name, string);
 			
 }
 
-int client_data::display(){
+int client_data::display()
+{
 
 flush(cout);
 
