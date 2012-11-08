@@ -27,7 +27,7 @@ using namespace std;
 #include <netinet/in.h>
 #include <cstring>
 #include "deck.h"
-#include "clientdata.h"
+#include "serverdata.h"
 #define PROTOPORT       36729            /* default protocol port number */
 #define QLEN            6               /* size of request queue        */
 #define TRUE             1
@@ -55,11 +55,7 @@ int     visits      =   0;              /* counts client connections    */
  *------------------------------------------------------------------------
  */
  
-bool arg_parse(char* line, char* command, char* args, int len);
-void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players);
-void display_players(vector <client_data>* client_vec);
-void send_to_players(vector <client_data>* client_vec, char* buf);
-bool player_is_in_lobby(vector <client_data>* client_vec, int socket);
+
 int main(int argc, char *argv[])
 {
         struct  	hostent  *ptrh;  /* pointer to a host table entry       */
@@ -72,7 +68,8 @@ int main(int argc, char *argv[])
         int     	port;            /* protocol port number                */
         char 		string[8];
         vector		<client_data> client_vec;
-        int 		n,x,k, rc, max_sd, desc_ready, close_conn,len, lobbytimer;
+        int 		n,x,k, rc, max_sd, desc_ready, close_conn,len;
+        int		lobbytimer;
         int 		end_server = false;
         socklen_t   alen;            /* length of address                   */
         char		msg[100] = "Accepts message length of <= 1000\n";
@@ -86,6 +83,7 @@ int main(int argc, char *argv[])
         fd_set		master_fd_write;
         fd_set		working_fd_read;
         fd_set		working_fd_write;
+        deck		uno_deck;
 #ifdef WIN32
         WSADATA wsaData;
         WSAStartup(0x0101, &wsaData);
@@ -99,43 +97,69 @@ int main(int argc, char *argv[])
         /* port number if one is specified.  Otherwise, use the default */
         /* port value given by constant PROTOPORT                       */
         if (argc > 3) {
-        		if ((max_players = atoi(argv[3])) > 10)
+        		if ((max_players = atoi(argv[2])) > 10)
         		{
         			fprintf(stdout,"That is more than the allowed number of players for uno. setting max to 10\n");
         			max_players = 10;
         		}
-        		else if ((max_players = atoi(argv[3])) < 2)
+        		else if ((max_players = atoi(argv[2])) < 2)
         		{
         			fprintf(stdout,"That is less than the allowed number of players for uno. setting max to 2\n");
         			max_players = 2;
         		}
-        		if ((min_players = atoi(argv[2])) < 2)
+        		if ((min_players = atoi(argv[1])) < 2)
         		{
         			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
         			min_players = 2;
         		}
-        		else if ((min_players = atoi(argv[2])) > max_players)
+        		else if ((min_players = atoi(argv[1])) > max_players)
         		{
         			fprintf(stdout,"That is more than the specified max number of players. setting min to max\n");
         			min_players = max_players;
         		}
         		
-       			port = atoi(argv[1]);
-       	} else if (argc > 2) {
-       			fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
-       			if ((min_players = atoi(argv[2])) < 2)
+       			port = atoi(argv[3]);
+       	} else if (argc > 2) {       			
+       			if ((max_players = atoi(argv[2])) > 10)
+        		{
+        			fprintf(stdout,"That is more than the allowed number of players for uno. setting max to 10\n");
+        			max_players = 10;
+        		}
+        		else if ((max_players = atoi(argv[2])) < 2)
+        		{
+        			fprintf(stdout,"That is less than the allowed number of players for uno. setting max to 2\n");
+        			max_players = 2;
+        		}
+        		if ((min_players = atoi(argv[1])) < 2)
         		{
         			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
         			min_players = 2;
         		}
-       			port = atoi(argv[1]);       	
-       	} else if (argc > 1) {                 /* if argument specified        */
+        		else if ((min_players = atoi(argv[1])) > max_players)
+        		{
+        			fprintf(stdout,"That is more than the specified max number of players. setting min to max\n");
+        			min_players = max_players;
+        		}
+        		fprintf(stdout,"No port number specified. Defaulting to port number %d\n",PROTOPORT);
+       			port = PROTOPORT;      	
+       	} else if (argc > 1) {                 /* if argument specified        */       			
        			fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
-       			fprintf(stdout,"No minimum number of players specified. Defaulting to %d player min\n",min_players);
-                port = atoi(argv[1]);   /* convert argument to binary   */
+       			if ((min_players = atoi(argv[1])) < 2)
+        		{
+        			fprintf(stdout,"That is less than the minimum number of players for uno. setting min to 2\n");
+        			min_players = 2;
+        		}
+        		else if ((min_players = atoi(argv[1])) > max_players)
+        		{
+        			fprintf(stdout,"That is more than the specified max number of players. setting min to max\n");
+        			min_players = max_players;
+        		}
+        		fprintf(stdout,"No port number specified. Defaulting to port number %d\n",PROTOPORT);
+       			port = PROTOPORT;      	
         } else {
         		fprintf(stdout,"No maximum number of players specified. Defaulting to %d player max\n",max_players);
        			fprintf(stdout,"No minimum number of players specified. Defaulting to %d player min\n",min_players);
+       			fprintf(stdout,"No port number specified. Defaulting to port number %d\n",PROTOPORT);
                 port = PROTOPORT;       /* use default port number      */
         }
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -185,12 +209,11 @@ int main(int argc, char *argv[])
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 		/*initialize timeval struct to five seconds*/
-		timeout.tv_sec = 5;
+		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
 		lobbytimer = 30;
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
-
         
         /* Main server loop - accept and handle requests */
         while (1) {
@@ -202,39 +225,46 @@ int main(int argc, char *argv[])
         		
         		//////////////////////////////////////////////////////////////////////////
         		/*call select and wait for it to finish*/
-        		fprintf(stdout,"\n");
-        		fprintf(stdout,"Currently connected players are: \n");
-        		if (client_vec.size() == 0)
-        		{
-        			fprintf(stdout,"None\n");
-        		}
-				for (int g=0; g<client_vec.size(); g++)
-				{	
-					client_vec[g].display();
-				}
-				fprintf(stdout,"\n");
-				fprintf(stdout,"Time left until game starts is %d seconds\n",lobbytimer);
-        		fprintf(stdout,"Waiting on select\n");
+        		//fprintf(stdout,"\n");
+        		//fprintf(stdout,"Currently connected players are: \n");
+        		//if (client_vec.size() == 0)
+        		//{
+        		//	fprintf(stdout,"None\n");
+        		//}
+				//for (int g=0; g<client_vec.size(); g++)
+				//{	
+				//	client_vec[g].display();
+				//}
+				//fprintf(stdout,"\n");
+				//fprintf(stdout,"Time left until game starts is %d seconds\n",lobbytimer);
+        		//fprintf(stdout,"Waiting on select\n");
         		rc = select(max_sd + 1, &working_fd_read, NULL, NULL, &timeout);
         		if (client_vec.size() >= min_players)
         		{
-        			fprintf(stdout,"decrementing lobby timer\n");
-        			lobbytimer = lobbytimer - 5;
+        			//fprintf(stdout,"decrementing lobby timer\n");
+        			lobbytimer = lobbytimer - 1;
+        			fprintf(stdout,"time left is %d\n",lobbytimer);
+        			if (client_vec.size() == max_players)
+        			{
+        				lobbytimer = 0;
+        			}
         			if (lobbytimer == 0)
         			{
-        				fprintf(stdout,"************************************************************************************\n");
-        				fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
-        				fprintf(stdout,"************************************************************************************\n");
+        				start_game(&client_vec);
+        				deal(&client_vec,&uno_deck);
+        				//fprintf(stdout,"************************************************************************************\n");
+        				//fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
+        				//fprintf(stdout,"************************************************************************************\n");
         				break;
         			}
         		}
         		else
         		{
-        			fprintf(stdout,"under minimum number of players. lobby timer not ticking\n");
+        			//fprintf(stdout,"under minimum number of players. lobby timer not ticking\n");
         			lobbytimer = 30;
         		}
         		
-        		timeout.tv_sec = 5;
+        		timeout.tv_sec = 1;
 				timeout.tv_usec = 0;
         		//////////////////////////////////////////////////////////////////////////
         		
@@ -248,10 +278,10 @@ int main(int argc, char *argv[])
         		
         		//////////////////////////////////////////////////////////////////////////
         		/*check to see if timeout expired*/
-        		if (rc == 0)
-        		{
-        			fprintf(stdout,"select() timed out.\n");
-        		}
+        		//if (rc == 0)
+        		//{
+        		//	fprintf(stdout,"select() timed out.\n");
+        		//}
         		//////////////////////////////////////////////////////////////////////////
         		
         		//////////////////////////////////////////////////////////////////////////
@@ -268,7 +298,6 @@ int main(int argc, char *argv[])
         					fprintf(stdout,"server socket is readable\n");
         					//do
         					//{	/*accept each incoming connection before looping back to select again*/
-        						fprintf(stdout,"gonna accept\n");
         						new_sd = accept(server_sd,(struct sockaddr *)&cad, &alen);
         						if (new_sd < 0)
         						{
@@ -295,9 +324,7 @@ int main(int argc, char *argv[])
         					close_conn = false;
         					//do
         					//{	/*receive data on this conn*/
-        						fprintf(stdout,"waiting to read\n");
         						rc = read(i,buf,sizeof(buf));
-        						fprintf(stdout,"just read\n");
         						if (rc < 0)
         						{
         							if (errno != EWOULDBLOCK)
@@ -317,6 +344,7 @@ int main(int argc, char *argv[])
                   				//data was received
                   				len = rc;
                   				fprintf(stdout,"%d bytes received\n",len);
+                  				fprintf(stdout,"received \"%s\"\n",buf);
                   				/*here is where i should be doing things with what a client sends me*/
                   				//echo data back to the client
                   				if (not close_conn && not arg_parse(buf,command,args,len)) //parse the line sent by the client
@@ -371,165 +399,6 @@ int main(int argc, char *argv[])
         		}
         }
 }
-///////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////
-bool arg_parse(char* line, char* command, char* args, int len)
-{
-	int 	x = 0;
-	int 	k = -1;
-	bool	bar = false;
-	bool	valid = true;
-	strcpy(command,"");
-	strcpy(args,"");
-	if (line[0] != '[' or line[len-3] !=']')
-	{
-		valid = false;
-	}
-	for (int j = 1; j < len-2; j++){
-
-		if (line[j] == '|'){
-			bar = true;
-		}
-		else if (not bar){
-			command[x] = line[j];
-			x = x + 1;
-		}
-		else{
-			k = k + 1;
-			//fprintf(stdout,"moving %c to %i in command\n",line[j],k);
-			args[k] = line[j];
-		}
-	}
-	args[k] = 0;
-	command[x] = 0;
-	if (not bar)
-	{
-		return false;
-	}
-	else
-	{
-		return valid;
-	}
-    //fprintf(stdout,"command is %s and args are %s\n",command,args);
-}
-///////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////
-void player_commands(vector <client_data>* client_vec, int socket, char* command, char* args, int max_players)
-{
-	int 	rc;
-	char 	buf[200];
-	char 	sender[300] = "[";
-	bool	already_in = false;
-
-	if (strcmp(command,"JOIN") == 0)
-	{
-		fprintf(stdout,"Player wants to join with name \"%s\"\n",args);
-		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-		{
-			if (itr->sd == socket)
-			{
-				rc = send(socket, "[INVALID|You are already in a game]\n", strlen("[INVALID|You are already in a game]\n"), 0);
-				already_in = true;
-			}
-		}
-		if (not already_in)
-		{
-			if (client_vec->size() < max_players)
-			{
-				client_data client = client_data(socket,args);
-				client_vec->push_back(client);
-				client.display();
-				display_players(client_vec);
-			}
-			else
-			{
-				rc = send(socket, "[INVALID|The lobby is full, you cannot join the game]\n", strlen("[INVALID|The lobby is full, you cannot join the game]\n"), 0);
-			}
-		}
-	}
-	else if (strcmp(command,"CHAT") == 0)
-	{	
-		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-		{
-			if (itr->sd == socket)
-			{
-				strcat(sender,itr->name);
-			}
-		}
-		strncpy(buf,args,200);
-		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
-		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
-		buf[strlen(buf)] = 0;
-		//fprintf(stdout,"Player wants to chat with message \"%s\"\n",buf);
-		//fprintf(stdout,"buf is %d chars long\n",strlen(buf));
-		strcat(sender,"|");
-		strncat(sender,buf,strlen(buf)+1);
-		strcat(sender,"]");
-		strcat(sender,"\n");
-		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-		{
-			if (itr->sd != socket)
-			{
-				rc = send(itr->sd, sender, strlen(sender), 0);
-			}
-			
-		}
-	}
-	else if (strcmp(command,"PLAY") == 0)
-	{
-		fprintf(stdout,"Player wants to play with card \"%s\"\n",args);
-	}	
-	else
-	{
-		rc = send(socket,"[INVALID|That is not a valid command]\n", strlen("[INVALID|That is not a valid command]\n"),0);
-		//fprintf(stdout,"That is not a valid command\n",);
-	}
-}
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-void display_players(vector <client_data>* client_vec)
-{
-	char buf[200];
-	int rc;
-	
-	sprintf(buf,"[PLAYERS|");
-	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-	{
-		if (itr != client_vec->begin())
-		{
-			strcat(buf, ",");
-		}
-		strcat(buf,itr->name);
-	}
-	strcat(buf,"]\n");
-	send_to_players(client_vec,buf);
-}
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-void send_to_players(vector <client_data>* client_vec, char* buf)
-{
-	int rc;
-	
-	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-	{
-		rc = send(itr->sd, buf, strlen(buf), 0);
-	}
-}
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-bool player_is_in_lobby(vector <client_data>* client_vec, int socket)
-{
-	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
-	{
-		if (itr->sd == socket)
-		{
-			return true;
-		}
-	}
-	
-	return false;
-}
-
 
 
 

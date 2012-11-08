@@ -42,11 +42,15 @@ int main(int argc, char *argv[])
         struct  hostent  *ptrh;  /* pointer to a host table entry       */
         struct  protoent *ptrp;  /* pointer to a protocol table entry   */
         struct  sockaddr_in sad; /* structure to hold an IP address     */
-        int     sd;              /* socket descriptor                   */
+        int     sd, rc;              /* socket descriptor                   */
         int     port;            /* protocol port number                */
         char    *host;           /* pointer to host name                */
         int     n;               /* number of characters read           */
-        char 	command[100] = "[JOIN|DAVID]";
+        timeval 	timeout;
+        fd_set		master_fd_read;
+        fd_set		working_fd_read;
+        bool	playing	= true;
+        char 	name[100];
         char    buf[1000];       /* buffer for data from the server     */
 #ifdef WIN32
         WSADATA wsaData;
@@ -59,8 +63,14 @@ int main(int argc, char *argv[])
 
 
         /* port value given by constant PROTOPORT                       */
-        if (argc > 2) {                 /* if protocol port specified   */
-                port = atoi(argv[2]);   /* convert to binary            */
+        fprintf(stdout,"argc is %i\n",argc);
+        if (argc >= 3) {
+        	port = atoi(argv[3]);
+        	strcpy(name,argv[2]);
+        }
+        else if (argc == 2) {                 /* if protocol port specified   */
+                strcpy(name,argv[2]);   /* convert to binary            */			///////SEGFAULT HERE!! FIND OUT HOW TO DO THIS
+                port = PROTOPORT;
         } else {
                 port = PROTOPORT;       /* use default port number      */
         }
@@ -104,16 +114,34 @@ int main(int argc, char *argv[])
         //                visits,visits==1?".":"s.");
         //        send(sd2,buf,strlen(buf),0);
         /* Repeatedly read data from socket and write to user's screen. */
-        send(sd,command,strlen(command),0);
+		
+		FD_ZERO(&master_fd_read);
+        FD_SET(sd,&master_fd_read);
+        FD_SET(0,&master_fd_read);
+        timeout.tv_sec = 1;
+		timeout.tv_usec = 0;
+		
+        send(sd,name,strlen(name)+1,0);
+        while(playing){
         
-        n = recv(sd, buf, sizeof(buf), 0);
-        while (n > 0) {
-                write(1,buf,n);
-                n = recv(sd, buf, sizeof(buf), 0);
+        	rc = select(sd + 1, &master_fd_read, NULL, NULL, &timeout);
+        	timeout.tv_sec = 1;
+        	if (FD_ISSET(0, &working_fd_read))
+        	{
+        		//input from the socket
+        	}
+        	if (FD_ISSET(sd, &working_fd_read))
+        	{
+        		//input from the keyboard
+        	}
 
-
+        	
+		    n = recv(sd, buf, sizeof(buf), 0);
+		    while (n > 0) {
+		            write(1,buf,n);
+		            n = recv(sd, buf, sizeof(buf), 0);
+		    }
         }
-        
         /* Close the socket. */
         closesocket(sd);
         /* Terminate the client program gracefully. */
