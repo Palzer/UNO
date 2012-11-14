@@ -62,9 +62,10 @@ int main(int argc, char *argv[])
         struct  	protoent *ptrp;  /* pointer to a protocol table entry   */
         struct  	sockaddr_in sad; /* structure to hold server's address  */
         struct  	sockaddr_in cad; /* structure to hold client's address  */
-        int     	server_sd, client_sd, new_sd;         /* socket descriptors                  */
+        int     	server_sd, client_sd, new_sd,g;         /* socket descriptors                  */
         int			OPTVAL = 1;
         int			flags = 1;
+        int 		numplayers = 0;
         int     	port;            /* protocol port number                */
         char 		string[8];
         vector		<client_data> client_vec;
@@ -74,16 +75,18 @@ int main(int argc, char *argv[])
         socklen_t   alen;            /* length of address                   */
         char		msg[100] = "Accepts message length of <= 1000\n";
         char  		args[1000];
+        char 		command[100];
         int			min_players = 2;
         int 		max_players = 10;
-        char 		command[100];
+        bool		invalid = false;
+        
         char    	buf[1000];       /* buffer for string the server sends  */
         timeval 	timeout;
         fd_set		master_fd_read;
         fd_set		master_fd_write;
         fd_set		working_fd_read;
         fd_set		working_fd_write;
-        deck		uno_deck;
+        deck*		uno_deck = new deck;
 #ifdef WIN32
         WSADATA wsaData;
         WSAStartup(0x0101, &wsaData);
@@ -92,7 +95,7 @@ int main(int argc, char *argv[])
         sad.sin_family = AF_INET;         /* set family to Internet     */
         sad.sin_addr.s_addr = INADDR_ANY; /* set the local IP address   */
 		
-
+		srand ( unsigned ( time (NULL) ) );
         /* Check command-line argument for protocol port and extract    */
         /* port number if one is specified.  Otherwise, use the default */
         /* port value given by constant PROTOPORT                       */
@@ -211,13 +214,13 @@ int main(int argc, char *argv[])
 		/*initialize timeval struct to five seconds*/
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
-		lobbytimer = 30;
+		lobbytimer = 10;
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
         
         /* Main server loop - accept and handle requests */
         while (1) {
-        		
+        		invalid = false;
         		//////////////////////////////////////////////////////////////////////////
         		/*copy master set over to the working set*/
         		memcpy(&working_fd_read,&master_fd_read, sizeof(master_fd_read));
@@ -239,33 +242,50 @@ int main(int argc, char *argv[])
 				//fprintf(stdout,"Time left until game starts is %d seconds\n",lobbytimer);
         		//fprintf(stdout,"Waiting on select\n");
         		rc = select(max_sd + 1, &working_fd_read, NULL, NULL, &timeout);
-        		if (client_vec.size() >= min_players)
+        		if (numplayers >= min_players and rc == 0)
         		{
-        			//fprintf(stdout,"decrementing lobby timer\n");
+        			timeout.tv_sec = 1;
+					timeout.tv_usec = 0;
+        			//fprintf(stdout,"timeout\n");
         			lobbytimer = lobbytimer - 1;
         			fprintf(stdout,"time left is %d\n",lobbytimer);
-        			if (client_vec.size() == max_players)
-        			{
-        				lobbytimer = 0;
-        			}
+        			//if (numplayers == max_players)
+        			//{
+        			//	lobbytimer = 0;
+        			//}
         			if (lobbytimer == 0)
         			{
         				start_game(&client_vec);
-        				deal(&client_vec,&uno_deck);
-        				//fprintf(stdout,"************************************************************************************\n");
-        				//fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
-        				//fprintf(stdout,"************************************************************************************\n");
-        				break;
+        				deal(&client_vec,uno_deck);			
+        				playgame(&client_vec,&working_fd_read,&master_fd_read,max_sd,server_sd,max_players,uno_deck,&numplayers);	////////////////									PLAYING THE GAME
+        				fprintf(stdout,"************************************************************************************\n");
+						fprintf(stdout,"********************************** GAME HAS ENDED **********************************\n");
+						fprintf(stdout,"************************************************************************************\n");
+						for (vector <client_data>::iterator itr = client_vec.begin(); itr != client_vec.end(); ++itr)
+						{
+							itr->turn = false;
+						}
+        				lobbytimer = 5;
+        				g = 0;
+        				while (g < client_vec.size() and numplayers < max_players)
+        				{
+        					if (client_vec[g].spec)
+        					{
+        						client_vec[g].spec = false;
+        						numplayers = numplayers + 1;
+        					}
+        					g = g + 1;
+        				}
         			}
         		}
-        		else
+        		else if (rc == 0)
         		{
         			//fprintf(stdout,"under minimum number of players. lobby timer not ticking\n");
-        			lobbytimer = 30;
+        			lobbytimer = 5;
+        			timeout.tv_sec = 1;
+					timeout.tv_usec = 0;
         		}
         		
-        		timeout.tv_sec = 1;
-				timeout.tv_usec = 0;
         		//////////////////////////////////////////////////////////////////////////
         		
         		//////////////////////////////////////////////////////////////////////////
@@ -330,7 +350,7 @@ int main(int argc, char *argv[])
         							if (errno != EWOULDBLOCK)
                      				{
                         				perror("  recv() failed");
-                        				close_conn = TRUE;
+                        				close_conn = true;
                      				}
                      				//break;
                      			}
@@ -338,29 +358,31 @@ int main(int argc, char *argv[])
                      			if (rc == 0)
                      			{
                      				printf("  Connection closed\n");
-                     				close_conn = TRUE;
+                     				close_conn = true;
                      				//break;
                   				}
                   				//data was received
                   				len = rc;
-                  				fprintf(stdout,"%d bytes received\n",len);
-                  				fprintf(stdout,"received \"%s\"\n",buf);
+                  				//fprintf(stdout,"%d bytes received\n",len);
+                  				//fprintf(stdout,"received \"%s\"\n",buf);
                   				/*here is where i should be doing things with what a client sends me*/
                   				//echo data back to the client
                   				if (not close_conn && not arg_parse(buf,command,args,len)) //parse the line sent by the client
                   				{
-                  					rc = send(i,"[INVALID|Not a valid command format]\n",strlen("[INVALID|Not a valid command format]\n"),0);
-                  					break;
+                  					rc = send(i,"[INVALID|Not a valid command format]\n",strlen("[INVALID|Not a valid command format]\n")+1,0);
+                  					invalid = true;
                   				}
-                  				if (strcmp(command,"JOIN") != 0 && not player_is_in_lobby(&client_vec,i))
-                  				{
-                  					rc = send(i,"[INVALID|You cannot send commands unless you \"JOIN\" first]\n",strlen("[INVALID|You cannot send commands unless you \"JOIN\" first]\n"),0);
-                  					break;
-                  				}
-                  				fprintf(stdout,"command is \"%s\" and args are \"%s\"\n",command,args);
-								if (not close_conn)
+                  				if (strcmp(command,"JOIN") != 0 and not close_conn and not invalid){
+		              				if (not player_is_in_lobby(&client_vec,i))
+		              				{
+		              					rc = send(i,"[INVALID|You cannot send commands unless you \"JOIN\" first]\n",strlen("[INVALID|You cannot send commands unless you \"JOIN\" first]\n")+1,0);
+		              					invalid = true;
+		              				}
+		              			}
+                  				//fprintf(stdout,"command is \"%s\" and args are \"%s\"\n",command,args);
+								if (not close_conn and not invalid)
 								{
-									player_commands(&client_vec,i,command,args,max_players);
+									player_commands(&client_vec,i,command,args,max_players,false,uno_deck,&numplayers);
 								}
                   				//rc = send(i, buf, len, 0);
                   				//if (rc < 0)
@@ -376,6 +398,7 @@ int main(int argc, char *argv[])
         					//max fd value based on the bits still turned on in the master read set
         					if (close_conn)
         					{
+        						//fprintf(stdout,"gotta close this connection\n");
         						close(i);
         						FD_CLR(i,&master_fd_read);
         						for (int g = 0; g < client_vec.size(); g++)
@@ -383,7 +406,21 @@ int main(int argc, char *argv[])
         							if (client_vec[g].sd == i)
         							{	
         								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",client_vec[g].name,client_vec[g].sd);
+        								if (not client_vec[g].spec)
+        								{
+        									numplayers = numplayers - 1;
+        									while (g < client_vec.size() and numplayers < max_players)
+											{
+												if (client_vec[g].spec)
+												{
+													client_vec[g].spec = false;
+													numplayers = numplayers + 1;
+												}
+												g = g + 1;
+											}
+        								}
         								client_vec.erase(client_vec.begin() + g);
+        								break;
         							}
         						}
         						if (i == max_sd)
@@ -398,6 +435,195 @@ int main(int argc, char *argv[])
         			}
         		}
         }
+}
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* master_fd_read,int max_sd,int server_sd,int max_players,deck* uno_deck,int* numplayers)
+{
+	bool playing = true;
+	int  rc,desc_ready,len,new_sd;
+	card discard_card;
+	int  end_server = false;
+	bool close_conn = false;
+	bool invalid = false;
+	char buf[1000];
+	char args[1000];
+    char command[100];
+	send_go(client_vec,uno_deck);
+	struct  	sockaddr_in cad; /* structure to hold client's address  */
+	 socklen_t   alen;            /* length of address                   */
+	
+	fprintf(stdout,"************************************************************************************\n");
+	fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
+	fprintf(stdout,"************************************************************************************\n");
+	while(playing){
+		memcpy(working_fd_read,master_fd_read, sizeof(*master_fd_read));
+		rc = select(max_sd + 1, working_fd_read, NULL, NULL, NULL);
+		desc_ready = rc;
+		for (int i = 0; i <= max_sd and desc_ready > 0; i++)
+		{
+			if (FD_ISSET(i, working_fd_read))
+			{
+				desc_ready = desc_ready - 1;	//found a readable sd so decrement descriptors ready
+				
+				if (i == server_sd)	//check to see if this is the server sd
+				{
+					fprintf(stdout,"server socket is readable\n");
+					new_sd = accept(server_sd,(struct sockaddr *)&cad, &alen);
+					if (new_sd < 0)
+					{
+						if (errno != EWOULDBLOCK)
+         				{
+            				perror("  accept() failed");
+            				end_server = TRUE;
+         				}
+         				//break;
+					}
+					
+					/*add incoming connection to the fd_set*/
+					fprintf(stdout,"new incoming connection - %d\n",new_sd);
+					FD_SET(new_sd, master_fd_read);
+					if (new_sd > max_sd) 
+					{
+						max_sd = new_sd;
+					}
+				}
+				else //not the server socket so an existing connection must be readable
+				{
+					fprintf(stdout,"descriptor %d is readable\n", i);
+					close_conn = false;
+					//do
+					//{	/*receive data on this conn*/
+						rc = read(i,buf,sizeof(buf));
+						if (rc < 0)
+						{
+							if (errno != EWOULDBLOCK)
+             				{
+                				perror("  recv() failed");
+                				close_conn = true;
+             				}
+             				//break;
+             			}
+             			//check to see if connection has been closed by client
+             			if (rc == 0)
+             			{
+             				printf("  Connection closed\n");
+             				close_conn = true;
+             				//break;
+          				}
+          				//data was received
+          				len = rc;
+          				if (not close_conn && not arg_parse(buf,command,args,len)) //parse the line sent by the client
+          				{
+          					rc = send(i,"[INVALID|Not a valid command format]\n",strlen("[INVALID|Not a valid command format]\n")+1,0);
+          					invalid = true;
+          				}
+          				//fprintf(stdout,"command is \"%s\" and args are \"%s\"\n",command,args);
+						if (not close_conn and not invalid)
+						{
+							playing = player_commands(client_vec,i,command,args,max_players,true,uno_deck,numplayers);
+							if (not playing)
+							{
+								for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+								{
+									itr->clienthand.hand.erase(itr->clienthand.hand.begin(),itr->clienthand.hand.end());
+								}
+								delete uno_deck;
+								uno_deck = new deck;
+							}
+						}
+          				//fprintf(stdout,"%d bytes received\n",len);
+          				//fprintf(stdout,"received \"%s\"\n",buf);
+          				/*here is where i should be doing things with what a client sends me*/
+					
+					//if close_conn is true then we need to clean up this closed connection.
+					//this includes removing the fd from the master set and determining the new
+					//max fd value based on the bits still turned on in the master read set
+					if (close_conn)
+					{
+						//fprintf(stdout,"gotta close this connection\n");
+						for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+						{
+							if (itr->sd == i && itr->turn)
+							{
+								set_turn(client_vec,uno_deck);
+								*numplayers = *numplayers - 1;
+								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",itr->name,itr->sd);
+								discard_card = uno_deck->show_top();
+								uno_deck->discard_pile.erase(uno_deck->discard_pile.end()-1);
+								for (vector <card>::iterator itp = itr->clienthand.hand.begin(); itp != itr->clienthand.hand.end(); ++itp)
+								{
+									uno_deck->discard(card(itp->type,itp->color));
+								}
+								fprintf(stderr,"\n");
+								uno_deck->discard(discard_card);
+								client_vec->erase(itr);								
+								if (*numplayers == 1)
+								{
+									playing = false;
+									strcpy(buf,"[GG|");
+									for (vector <client_data>::iterator itp = client_vec->begin(); itp != client_vec->end(); ++itp)
+									{
+										if (not itp->spec)
+										{
+											strcat(buf,itp->name);
+										}
+									}
+									strcat(buf,"]");
+									send_to_players(client_vec,buf);
+									break;
+								}
+								send_go(client_vec,uno_deck);
+								break;
+							}
+							else if	(itr->sd == i)
+							{
+								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",itr->name,itr->sd);
+								discard_card = uno_deck->show_top();
+								uno_deck->discard_pile.erase(uno_deck->discard_pile.end()-1);
+								for (vector <card>::iterator itp = itr->clienthand.hand.begin(); itp != itr->clienthand.hand.end(); ++itp)
+								{
+									uno_deck->discard(card(itp->type,itp->color));
+								}
+								fprintf(stderr,"\n");
+								uno_deck->discard(discard_card);
+								if (not itr->spec)
+								{
+									*numplayers = *numplayers - 1;
+								}
+								client_vec->erase(itr);
+								if (*numplayers == 1)
+								{
+									playing = false;
+									strcpy(buf,"[GG|");
+									for (vector <client_data>::iterator itp = client_vec->begin(); itp != client_vec->end(); ++itp)
+									{
+										if (not itp->spec)
+										{
+											strcat(buf,itp->name);
+										}
+									}
+									strcat(buf,"]");
+									send_to_players(client_vec,buf);
+									break;
+								}
+								break;
+							}	
+						}
+						close(i);
+						FD_CLR(i,master_fd_read);
+						if (i == max_sd)
+						{
+							while (FD_ISSET(max_sd, master_fd_read) == false) 
+							{
+								max_sd = max_sd - 1;
+							}        								
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 

@@ -36,13 +36,36 @@ class deck{
 	void display();
 	void shuffle();
 	void discard(card card);
+	card show_top();
 	card draw();
 	bool isempty();
 	
+	bool forward;
+	
+	std::vector<card> discard_pile;
 	private:
 	
 	//may want a vector of cards here for the draw and discard piles
 	std::vector<card> draw_pile;
-	std::vector<card> discard_pile;
+	
 
+};
+
+class myhand{
+
+	public:
+		
+		myhand();
+		
+		bool isempty();
+		bool playcard(card playcard);
+		void addcard(card card);
+		void display();
+		void discard(card card);
+		
+		card last_played;
+		std::vector <card> hand;
+	
+	private:
+	
 };

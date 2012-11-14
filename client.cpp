@@ -14,13 +14,17 @@
 #include <netdb.h>
 #endif
 #include <stdio.h>
+#include <sys/ioctl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "deck.h"
+#include "clientdata.h"
 #define PROTOPORT       36729            /* default protocol port number */
 extern  int             errno;
 char    localhost[] =   "localhost";    /* default host name            */
 
+using namespace std;
 /*------------------------------------------------------------------------
  * Program:   client
  *
@@ -37,21 +41,26 @@ char    localhost[] =   "localhost";    /* default host name            */
  *
  *------------------------------------------------------------------------
  */
+
 int main(int argc, char *argv[])
 {
         struct  hostent  *ptrh;  /* pointer to a host table entry       */
         struct  protoent *ptrp;  /* pointer to a protocol table entry   */
         struct  sockaddr_in sad; /* structure to hold an IP address     */
-        int     sd, rc;              /* socket descriptor                   */
+        int			flags = 1;
+        int     sd, rc,desc_ready;              /* socket descriptor                   */
         int     port;            /* protocol port number                */
         char    *host;           /* pointer to host name                */
         int     n;               /* number of characters read           */
-        timeval 	timeout;
+        timeval 	time;
         fd_set		master_fd_read;
         fd_set		working_fd_read;
+        bool	close_conn;
         bool	playing	= true;
         char 	name[100];
+        bool	automatic = false;
         char    buf[1000];       /* buffer for data from the server     */
+        myhand 	currenthand;
 #ifdef WIN32
         WSADATA wsaData;
         WSAStartup(0x0101, &wsaData);
@@ -61,17 +70,38 @@ int main(int argc, char *argv[])
         /* Check command-line argument for protocol port and extract    */
         /* port number if one is specified.  Otherwise, use the default */
 
-
+		
         /* port value given by constant PROTOPORT                       */
-        fprintf(stdout,"argc is %i\n",argc);
-        if (argc >= 3) {
+        if (argc > 4)
+        {	
+        	if (strcmp(argv[4],"a") == 0)
+        	{
+        		automatic = true;
+        		fprintf(stderr,"Automatic Mode Set\n");
+        	}
         	port = atoi(argv[3]);
-        	strcpy(name,argv[2]);
+        	if (strcmp(argv[2],"localhost")) host = localhost;
+            else host = argv[2];
+        	strcpy(name,argv[1]);
         }
-        else if (argc == 2) {                 /* if protocol port specified   */
-                strcpy(name,argv[2]);   /* convert to binary            */			///////SEGFAULT HERE!! FIND OUT HOW TO DO THIS
+        if (argc > 3) {
+        	port = atoi(argv[3]);
+        	if (strcmp(argv[2],"localhost")) host = localhost;
+            else host = argv[2];
+        	strcpy(name,argv[1]);
+        }
+        else if (argc > 2) {
+        		if (strcmp(argv[2],"localhost")) host = localhost;
+                else host = argv[2];
+                strcpy(name,argv[1]);
+                port = PROTOPORT;         /* if host argument specified   */
+        }
+        else if (argc > 1) {                 /* if protocol port specified   */
+                strcpy(name,argv[1]);   /* convert to binary            */
+                host = localhost;			
                 port = PROTOPORT;
         } else {
+        	host = localhost;
                 port = PROTOPORT;       /* use default port number      */
         }
         if (port > 0)                   /* test for legal value         */
@@ -81,10 +111,8 @@ int main(int argc, char *argv[])
                 exit(1);
         }
         /* Check host argument and assign host name. */
-        if (argc > 1) {
-                host = argv[1];         /* if host argument specified   */
-        } else {
-                host = localhost;
+        if (argc > 2) {
+                host = argv[2];         /* if host argument specified   */
         }
         /* Convert host name to equivalent IP address and copy to sad. */
         ptrh = gethostbyname(host);
@@ -118,33 +146,54 @@ int main(int argc, char *argv[])
 		FD_ZERO(&master_fd_read);
         FD_SET(sd,&master_fd_read);
         FD_SET(0,&master_fd_read);
-        timeout.tv_sec = 1;
-		timeout.tv_usec = 0;
+        time.tv_sec = 5;
+		time.tv_usec = 0;
 		
-        send(sd,name,strlen(name)+1,0);
+        join(sd,name);
+        fprintf(stderr,"||Commands||\nTo chat, prefix your input with 'chat '\nTo play, prefix your choice with 'play '\nTo quit, enter 'quit'\n===================================================\n");
         while(playing){
-        
-        	rc = select(sd + 1, &master_fd_read, NULL, NULL, &timeout);
-        	timeout.tv_sec = 1;
-        	if (FD_ISSET(0, &working_fd_read))
-        	{
-        		//input from the socket
-        	}
-        	if (FD_ISSET(sd, &working_fd_read))
-        	{
-        		//input from the keyboard
-        	}
-
         	
-		    n = recv(sd, buf, sizeof(buf), 0);
-		    while (n > 0) {
-		            write(1,buf,n);
-		            n = recv(sd, buf, sizeof(buf), 0);
-		    }
+        	memcpy(&working_fd_read,&master_fd_read, sizeof(master_fd_read));
+        	rc = select(sd + 1, &working_fd_read, NULL, NULL, &time);
+        	if (rc < 0)
+    		{
+    			perror("select() failed");
+    		}
+    		
+        	time.tv_sec = 5;
+			desc_ready = rc;
+			for (int i = 0; i <= sd and desc_ready > 0; i++)
+    		{
+    			if (FD_ISSET(i, &working_fd_read))
+    			{
+    				desc_ready = desc_ready - 1;
+    				rc = read(i,buf,sizeof(buf));
+    				if (rc == 0)
+         			{
+         				printf("  Server Connection Closed. Exiting\n");
+         				exit(-1);
+         				//break;
+      				}
+    				//while (n > 0) {
+					if (i != 0)
+					{	
+						read_message(i,buf,&currenthand,name,automatic);
+					}
+					else
+					{
+						player_command(rc,sd,buf,&currenthand);
+					}
+					//	rc = read(sd,buf,sizeof(buf));
+					//}
+				}
+			}		    
         }
         /* Close the socket. */
         closesocket(sd);
         /* Terminate the client program gracefully. */
         exit(0);
 }
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+
 
