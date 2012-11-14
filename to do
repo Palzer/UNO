@@ -1,0 +1,24 @@
+to do server:
+
+	Lobby:
+	
+	-if someone drops and then someone connects with a conflicting name they may get the same name someone else if someone else with the lobby size has a conflicting name
+	-why kick off when we get full? what happens after the game then? kick off again?
+	-kick people if too many bad messages
+	
+	Game:
+	-may have a bug for if the deck runs out
+	-if sent a card with no card i make it a red
+	
+	Notes:
+	
+	
+to do client:
+
+	Lobby:
+	
+	-choose to either make the player choose a new name if its an invalid name or reconnect with a different one
+	
+	Game:
+	
+	Notes:
