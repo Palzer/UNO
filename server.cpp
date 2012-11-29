@@ -33,7 +33,8 @@ using namespace std;
 #define TRUE             1
 #define FALSE            0
 int     visits      =   0;              /* counts client connections    */
-
+fd_set		master_fd_read;
+fd_set		working_fd_read;
 
 
 /*------------------------------------------------------------------------
@@ -82,10 +83,6 @@ int main(int argc, char *argv[])
         
         char    	buf[1000];       /* buffer for string the server sends  */
         timeval 	timeout;
-        fd_set		master_fd_read;
-        fd_set		master_fd_write;
-        fd_set		working_fd_read;
-        fd_set		working_fd_write;
         deck*		uno_deck = new deck;
 #ifdef WIN32
         WSADATA wsaData;
@@ -257,13 +254,22 @@ int main(int argc, char *argv[])
         			{
         				start_game(&client_vec);
         				deal(&client_vec,uno_deck);			
-        				playgame(&client_vec,&working_fd_read,&master_fd_read,max_sd,server_sd,max_players,uno_deck,&numplayers);	////////////////									PLAYING THE GAME
+        				playgame(&client_vec,&max_sd,server_sd,max_players,uno_deck,&numplayers);	////////////////									PLAYING THE GAME
         				fprintf(stdout,"************************************************************************************\n");
 						fprintf(stdout,"********************************** GAME HAS ENDED **********************************\n");
 						fprintf(stdout,"************************************************************************************\n");
+						bool found = false; 
+						client_data client;
 						for (vector <client_data>::iterator itr = client_vec.begin(); itr != client_vec.end(); ++itr)
 						{
 							itr->turn = false;
+							if (not found && not itr->spec)
+							{
+								found = true;
+								client = *itr;
+								client_vec.erase(itr);
+								client_vec.push_back(client);
+							}
 						}
         				lobbytimer = 5;
         				g = 0;
@@ -271,8 +277,14 @@ int main(int argc, char *argv[])
         				{
         					if (client_vec[g].spec)
         					{
+        						fprintf(stderr,"making %s a player\n",client_vec[g].name);
         						client_vec[g].spec = false;
+        						fprintf(stderr,"Player: %s, Player #: %d, sd: %d, Turn?: %d, Spec?: %d\n",client_vec[g].name,g,client_vec[g].sd,client_vec[g].turn,client_vec[g].spec);   						
         						numplayers = numplayers + 1;
+        					}
+        					else
+        					{
+        						fprintf(stderr,"Player: %s, Player #: %d, sd: %d, Turn?: %d, Spec?: %d\n",client_vec[g].name,g,client_vec[g].sd,client_vec[g].turn,client_vec[g].spec); 
         					}
         					g = g + 1;
         				}
@@ -332,9 +344,11 @@ int main(int argc, char *argv[])
         						/*add incoming connection to the fd_set*/
         						fprintf(stdout,"new incoming connection - %d\n",new_sd);
         						FD_SET(new_sd, &master_fd_read);
+        						fprintf(stdout,"added connection %d to fd_set\n",new_sd);
         						if (new_sd > max_sd) 
         						{
         							max_sd = new_sd;
+        							fprintf(stdout,"max_sd is now %d\n",new_sd);
         						}
         					//} while (new_sd != -1);
         				}
@@ -399,16 +413,19 @@ int main(int argc, char *argv[])
         					if (close_conn)
         					{
         						//fprintf(stdout,"gotta close this connection\n");
+        						
         						close(i);
         						FD_CLR(i,&master_fd_read);
-        						for (int g = 0; g < client_vec.size(); g++)
+        						fprintf(stdout,"removed connection %d from fd_set\n",i);
+        						for (int k = 0; k < client_vec.size(); k++)
         						{
-        							if (client_vec[g].sd == i)
+        							if (client_vec[k].sd == i)
         							{	
-        								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",client_vec[g].name,client_vec[g].sd);
-        								if (not client_vec[g].spec)
+        								fprintf(stdout,"Client name: %s Socket: %d (disconnected)\n",client_vec[k].name,client_vec[k].sd);
+        								if (not client_vec[k].spec)
         								{
         									numplayers = numplayers - 1;
+        									int g = 0;
         									while (g < client_vec.size() and numplayers < max_players)
 											{
 												if (client_vec[g].spec)
@@ -419,7 +436,7 @@ int main(int argc, char *argv[])
 												g = g + 1;
 											}
         								}
-        								client_vec.erase(client_vec.begin() + g);
+        								client_vec.erase(client_vec.begin() + k);
         								break;
         							}
         						}
@@ -438,7 +455,7 @@ int main(int argc, char *argv[])
 }
 /////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////
-void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* master_fd_read,int max_sd,int server_sd,int max_players,deck* uno_deck,int* numplayers)
+void playgame(vector <client_data>* client_vec,int* max_sd,int server_sd,int max_players,deck* uno_deck,int* numplayers)
 {
 	bool playing = true;
 	int  rc,desc_ready,len,new_sd;
@@ -457,12 +474,12 @@ void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* m
 	fprintf(stdout,"********************************* GAME HAS STARTED *********************************\n");
 	fprintf(stdout,"************************************************************************************\n");
 	while(playing){
-		memcpy(working_fd_read,master_fd_read, sizeof(*master_fd_read));
-		rc = select(max_sd + 1, working_fd_read, NULL, NULL, NULL);
+		memcpy(&working_fd_read,&master_fd_read, sizeof(master_fd_read));
+		rc = select(*max_sd + 1, &working_fd_read, NULL, NULL, NULL);
 		desc_ready = rc;
-		for (int i = 0; i <= max_sd and desc_ready > 0; i++)
+		for (int i = 0; i <= *max_sd and desc_ready > 0; i++)
 		{
-			if (FD_ISSET(i, working_fd_read))
+			if (FD_ISSET(i, &working_fd_read))
 			{
 				desc_ready = desc_ready - 1;	//found a readable sd so decrement descriptors ready
 				
@@ -482,10 +499,12 @@ void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* m
 					
 					/*add incoming connection to the fd_set*/
 					fprintf(stdout,"new incoming connection - %d\n",new_sd);
-					FD_SET(new_sd, master_fd_read);
-					if (new_sd > max_sd) 
+					FD_SET(new_sd, &master_fd_read);
+					fprintf(stdout,"added connection %d to fd_set\n",new_sd);
+					if (new_sd > *max_sd) 
 					{
-						max_sd = new_sd;
+						*max_sd = new_sd;
+						fprintf(stdout,"max_sd is now %d\n",new_sd);
 					}
 				}
 				else //not the server socket so an existing connection must be readable
@@ -571,6 +590,12 @@ void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* m
 									}
 									strcat(buf,"]");
 									send_to_players(client_vec,buf);
+									for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+									{
+										itr->clienthand.hand.erase(itr->clienthand.hand.begin(),itr->clienthand.hand.end());
+									}
+									delete uno_deck;
+									uno_deck = new deck;
 									break;
 								}
 								send_go(client_vec,uno_deck);
@@ -605,19 +630,26 @@ void playgame(vector <client_data>* client_vec,fd_set* working_fd_read,fd_set* m
 									}
 									strcat(buf,"]");
 									send_to_players(client_vec,buf);
+									for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
+									{
+										itr->clienthand.hand.erase(itr->clienthand.hand.begin(),itr->clienthand.hand.end());
+									}
+									delete uno_deck;
+									uno_deck = new deck;
 									break;
 								}
 								break;
 							}	
 						}
 						close(i);
-						FD_CLR(i,master_fd_read);
-						if (i == max_sd)
+						FD_CLR(i,&master_fd_read);
+						fprintf(stdout,"removed connection %d from fd_set\n",i);
+						if (i == *max_sd)
 						{
-							while (FD_ISSET(max_sd, master_fd_read) == false) 
+							while (FD_ISSET(*max_sd, &master_fd_read) == false) 
 							{
-								max_sd = max_sd - 1;
-							}        								
+								*max_sd = *max_sd - 1;
+							}        	       								
 						}
 					}
 				}

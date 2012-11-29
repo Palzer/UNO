@@ -52,6 +52,7 @@ char** parse_socket(int socket, char* line)
 			}
 			else if ((line[place] == '|') && not bar){
 				count = count + 1;
+				bar = true;
 			}
 			place = place + 1;
 		}
@@ -65,7 +66,23 @@ char** parse_socket(int socket, char* line)
 		while (line[place] != 0){
 			if (line[place] == ']')
 			{
-				line[place] = 0;
+				//fprintf(stderr,"found back bar\n");
+				if (place > 0)
+				{
+					if (line[place-1] != '~')
+					{
+						//fprintf(stderr,"found valid back bar\n");
+						line[place] = 0;
+					}
+					else
+					{
+						strcpy(&line[place-1],&line[place]);
+					}
+				}
+				else
+				{
+					line[place] = 0;
+				}
 			}
 			else if (line[place] == ',')
 			{	
@@ -253,9 +270,24 @@ void read_message(int socket, char* buf,myhand* currenthand, char* name,bool aut
 			{
 				if (buf[pos] == ']')
 				{
-					buf[pos] = 0;
-					server_message(socket,begin_message,currenthand,name,automatic);
-					sent = true;
+					if (pos > 0)
+					{
+						if (buf[pos-1] != '~')
+						{
+							//fprintf(stderr,"found valid back bar\n");
+							buf[pos] = 0;
+							server_message(socket,begin_message,currenthand,name,automatic);
+							sent = true;
+						}
+					}
+					else
+					{
+						buf[pos] = 0;
+						server_message(socket,begin_message,currenthand,name,automatic);
+						sent = true;
+					}
+					
+					
 				}
 				pos = pos + 1;
 			}
@@ -291,7 +323,7 @@ void player_command(int numchar, int socket, char* buf,myhand* currenthand)
 			if (message[0] == 'N')
 			{
 				fprintf(stderr,"What color would you like that to be? ");
-				message[0] = getchar();
+				message[0] = toupper(getchar());
 			}
 			currenthand->last_played = card(message[1],message[0]);
 			strcpy(sender,"[PLAY|");

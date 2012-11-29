@@ -67,13 +67,22 @@ bool arg_parse(char* line, char* command, char* args, int len)
 			//fprintf(stdout,"moving %c to %i in command\n",line[j],k);
 			k = k + 1;
 			args[k] = line[j];
-			if (line[j] == ']') 
+			if (line[j] == ']')
 			{
-				//fprintf(stderr,"found back bar\n");
-				bb = true;
 				//fprintf(stdout,"found back bracket\n");
+				if (j > 0)
+				{
+					if (line[j-1] != '~')
+					{
+						//fprintf(stderr,"found valid back bar\n");
+						bb = true;
+					}
+				}
+				else
+				{
+					bb = true;
+				}
 			}
-			
 		}
 	}
 	args[k] = 0;
@@ -186,8 +195,18 @@ bool player_commands(vector <client_data>* client_vec, int socket, char* command
 		for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
 		{
 			if (itr->sd != socket)
-			{
+			{				
 				rc = send(itr->sd, sender, strlen(sender), 0);
+				if (rc < 0)
+				{
+					fprintf(stderr,"send to client failed\n");
+					//if (errno != EWOULDBLOCK)
+					//{
+					//	perror("  recv() failed");
+					//	close_conn = true;
+					//}
+					//break;
+				}
 			}
 			
 		}
@@ -206,15 +225,22 @@ bool player_commands(vector <client_data>* client_vec, int socket, char* command
 						card last_card = uno_deck->show_top();
 						if (args[1] == 'N' && args[0] == 'N')
 						{
-							last_card = uno_deck->draw();
-							sprintf(sender,"[DEAL|");
-							ct[0] = last_card.color;
-							strcat(sender,ct);
-							ct[0] = last_card.type;
-							strcat(sender,ct);
-							itr->clienthand.addcard(last_card);						
-							strcat(sender,"]");			
-							send(itr->sd,sender,strlen(sender),0);
+							if (uno_deck->isempty())
+							{
+								set_turn(client_vec,uno_deck);
+							}
+							else
+							{
+								last_card = uno_deck->draw();							
+								sprintf(sender,"[DEAL|");
+								ct[0] = last_card.color;
+								strcat(sender,ct);
+								ct[0] = last_card.type;
+								strcat(sender,ct);
+								itr->clienthand.addcard(last_card);						
+								strcat(sender,"]");			
+								send(itr->sd,sender,strlen(sender),0);
+							}
 							send_go(client_vec,uno_deck);
 						}
 						else if (args[1] == last_card.type || args[0] == last_card.color || args[1] == 'F' || args[1] == 'W')
@@ -229,8 +255,15 @@ bool player_commands(vector <client_data>* client_vec, int socket, char* command
 								{
 									itr->clienthand.discard(card(args[1],args[0]));
 								}
-								if (args[0] == 'N')	uno_deck->discard(card(args[1],'R'));
-								else	uno_deck->discard(card(args[1],args[0]));
+								if (args[0] == 'N')	
+								{
+									uno_deck->discard(card(args[1],'R'));
+									fprintf(stderr,"arg[0] was 'N', discarded: %c%c",'R',args[1]);
+								}
+								else{
+									uno_deck->discard(card(args[1],args[0]));
+									fprintf(stderr,"discarded: %c%c",args[0],args[1]);
+								}	
 								
 								fprintf(stderr,"%s's hand is now: ",itr->name);
 								itr->clienthand.display();
@@ -256,6 +289,7 @@ bool player_commands(vector <client_data>* client_vec, int socket, char* command
 									send_to_players(client_vec,sender);
 								}
 								if (args[1] == 'R') uno_deck->forward = not uno_deck->forward;
+								if (args[1] == 'U') uno_deck->forward = not uno_deck->forward;
 								set_turn(client_vec,uno_deck);
 								if (args[1] == 'D') draw_card(client_vec,uno_deck,2);
 								if (args[1] == 'F') draw_card(client_vec,uno_deck,4);								
@@ -265,11 +299,13 @@ bool player_commands(vector <client_data>* client_vec, int socket, char* command
 							else
 							{
 								rc = send(socket,"[INVALID|You do not have that card in your hand]",strlen("[INVALID|You do not have that card in your hand]"),0);
+								send_go(client_vec,uno_deck);
 							}
 						}
 						else
 						{
 							rc = send(socket,"[INVALID|That is not a valid card to play]",strlen("[INVALID|That is not a valid card to play]"),0);
+							send_go(client_vec,uno_deck);
 						}
 					}
 					else
@@ -324,6 +360,16 @@ void send_to_players(vector <client_data>* client_vec, char* buf)
 	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
 	{
 		rc = send(itr->sd, buf, strlen(buf), 0);
+		if (rc < 0)
+		{
+			fprintf(stderr,"send to client failed\n");
+			//if (errno != EWOULDBLOCK)
+			//{
+			//	perror("  recv() failed");
+			//	close_conn = true;
+			//}
+			//break;
+		}
 	}
 }
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -381,7 +427,7 @@ void deal(vector <client_data>* client_vec, deck* uno_deck)
 				turnset = true; 
 			}
 			sprintf(buf,"[DEAL|");
-			for (int i = 0; i < 7; i++)
+			for (int i = 0; i < 10; i++)
 			{
 				if (i != 0)
 				{
@@ -429,7 +475,7 @@ void set_turn(vector <client_data>* client_vec,deck* uno_deck)
 			}
 			if (itr->turn == true && not set)
 			{
-				//fprintf(stderr,"it was just %s's turn\n",itr->name);
+				fprintf(stderr,"it was just %s's turn\n",itr->name);
 				found = true;
 				itr->turn = false;
 			}
@@ -463,7 +509,7 @@ void set_turn(vector <client_data>* client_vec,deck* uno_deck)
 			}
 			if (itr->turn == true && not set)
 			{
-				//fprintf(stderr,"it was just %s's turn\n",itr->name);
+				fprintf(stderr,"it was just %s's turn\n",itr->name);
 				found = true;
 				itr->turn = false;
 			}
@@ -520,21 +566,24 @@ void draw_card(std::vector <client_data>* client_vec,deck* uno_deck,int num_to_d
 	
 	for (vector <client_data>::iterator itr = client_vec->begin(); itr != client_vec->end(); ++itr)
 	{	
-		if (not itr->spec && itr->turn)
+		if (not itr->spec && itr->turn and not uno_deck->isempty())
 		{
 			sprintf(buf,"[DEAL|");
 			for (int i = 0; i < num_to_draw; i++)
 			{
-				if (i != 0)
+				if (not uno_deck->isempty())
 				{
-					strcat(buf,",");
+					if (i != 0)
+					{
+						strcat(buf,",");
+					}
+					card_for_player = uno_deck->draw();
+					ct[0] = card_for_player.color;
+					strcat(buf,ct);
+					ct[0] = card_for_player.type;
+					strcat(buf,ct);
+					itr->clienthand.addcard(card_for_player);
 				}
-				card_for_player = uno_deck->draw();
-				ct[0] = card_for_player.color;
-				strcat(buf,ct);
-				ct[0] = card_for_player.type;
-				strcat(buf,ct);
-				itr->clienthand.addcard(card_for_player);
 			}
 			strcat(buf,"]");			
 			send(itr->sd,buf,strlen(buf),0);

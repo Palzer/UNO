@@ -101,6 +101,8 @@ int main(int argc, char *argv[])
                 host = localhost;			
                 port = PROTOPORT;
         } else {
+        	fprintf(stderr,"Usage: ./client [name] [host] [port] [a]\n");
+        	exit(0);
         	host = localhost;
                 port = PROTOPORT;       /* use default port number      */
         }

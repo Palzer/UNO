@@ -51,8 +51,8 @@ deck::deck()
 		draw_pile.push_back(card('D',color));
 		draw_pile.push_back(card('S',color));
 		draw_pile.push_back(card('S',color));
-		draw_pile.push_back(card('R',color));
-		draw_pile.push_back(card('R',color));
+		draw_pile.push_back(card('U',color));
+		draw_pile.push_back(card('U',color));
 		draw_pile.push_back(card('W','N'));
 		draw_pile.push_back(card('F','N'));
 	}
