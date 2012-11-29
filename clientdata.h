@@ -5,6 +5,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <vector>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
